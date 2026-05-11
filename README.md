@@ -16,6 +16,14 @@ skill_mining/
 ├── collectors/
 │   ├── profile_collector.py         # User profile metadata
 │   └── repo_collector.py            # Repositories, commits, READMEs, scoring
+├── data/
+│   ├── agents/                      # AI agent pipeline for profile analysis
+│   │   ├── agents.py                # LangChain agents (skill, role, summarizer)
+│   │   ├── pipeline.py              # LangGraph orchestration
+│   │   └── tools.py                 # GitHub API utilities
+│   ├── raw/                         # <username>.json (full evidence document)
+│   ├── processed/                   # <username>_summary.json, master_summary.csv
+│   └── preprocessed/                # <username>_preprocessed.json (RAG-ready chunks)
 ├── transformers_local/
 │   └── schema_builder.py            # Assembles final JSON schema
 ├── preprocessor/
@@ -25,10 +33,6 @@ skill_mining/
 │   └── pipeline.py                  # Orchestrates clean → chunk → historical analysis
 ├── utils/
 │   └── helpers.py                   # Shared utility functions
-├── data/
-│   ├── raw/                         # <username>.json (full evidence document)
-│   ├── processed/                   # <username>_summary.json, master_summary.csv
-│   └── preprocessed/                # <username>_preprocessed.json (RAG-ready chunks)
 ├── logs/                            # run_<timestamp>.json
 ├── usernames.txt                    # 10 individual GitHub profiles for experiments
 ├── requirements.txt
@@ -49,20 +53,22 @@ source .venv/bin/activate      # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure your GitHub token
+### 2. Configure your API keys
 
 ```bash
 cp .env.example .env
-# Edit .env and set GITHUB_TOKEN=ghp_your_token_here
+# Edit .env and set:
+# GITHUB_TOKEN=ghp_your_github_token_here
+# GROQ_API_KEY=your_groq_api_key_here
 
-Never commit your `.env` file. Copy `.env.example` to `.env` and fill in your own GitHub Personal Access Token. The `.env` file is listed in `.gitignore` and will not be pushed to GitHub.
-Generate one at: https://github.com/settings/tokens
+Never commit your `.env` file. Copy `.env.example` to `.env` and fill in your own API keys. The `.env` file is listed in `.gitignore` and will not be pushed to GitHub.
 ```
 
-A **classic personal access token** with **public repo read** scope is
-sufficient. No write permissions are required.
+#### GitHub Token
+Generate a **classic personal access token** with **public repo read** scope at: https://github.com/settings/tokens
 
-Generate one at: https://github.com/settings/tokens
+#### Groq API Key
+Get your API key for AI agent analysis at: https://console.groq.com/keys
 
 ### 3. Verify setup
 
@@ -130,6 +136,48 @@ The preprocessor runs three steps internally:
 | Clean | `preprocessor/cleaner.py` | Fixes encoding corruption, strips HTML and badge lines, drops items < 20 chars |
 | Chunk | `preprocessor/chunker.py` | Splits long README evidence into ≤1500-char overlapping segments |
 | Historical analysis | `preprocessor/historical.py` | Derives commit trends, language evolution, and activity signals per year |
+
+---
+
+## AI Agent Analysis
+
+Analyze GitHub profiles using AI agents to extract skills, roles, and professional summaries.
+
+### Analyze a single profile
+
+```bash
+python main.py analyze --username karpathy
+```
+
+### What the agents do
+
+The AI agent pipeline consists of three specialized agents:
+
+| Agent | Purpose | Output |
+|-------|---------|--------|
+| **Skill Extractor** | Analyzes repositories and languages | Technical skills with confidence scores and evidence |
+| **Role Analyzer** | Examines ownership patterns | Developer role (creator, contributor, maintainer, learner) |
+| **Summarizer** | Combines all data | Professional profile summary |
+
+### Sample output
+
+```
+==================================================
+DEVELOPER PROFILE
+==================================================
+
+SKILLS:
+1. Python
+   Confidence: 0.9
+   Justification: Used in majority of repositories
+   Evidence: Repository descriptions and language statistics
+
+ROLE:
+Maintainer - Created 9 out of 10 repositories with high community engagement
+
+SUMMARY:
+Professional summary highlighting expertise, experience, and achievements...
+```
 
 ---
 
