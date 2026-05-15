@@ -1,8 +1,8 @@
-# Skill Mining – GitHub Profile Data Collector
+# Skill Mining – GitHub Profile Data Collector & Preprocessor
 
-A Python pipeline that collects public GitHub profile and repository data, then produces evidence-preserving JSON outputs for downstream RAG-based skill, role, contribution, and leadership inference.
-
-The current v2 pipeline focuses on closing GitHub data gaps such as historical commit coverage, monthly activity patterns, PR/issue collaboration signals, profile README context, pinned repositories, framework/tool detection, CI/test/release signals, and richer evidence chunks.
+A Python pipeline that collects public GitHub profile data, cleans and chunks
+it into RAG-ready evidence, and produces structured JSON output for downstream
+skill/role/leadership inference by LLM agents.
 
 ---
 
@@ -31,6 +31,27 @@ skill_mining/
 │   └── preprocessed/                 # Optional file-based preprocessing output
 ├── logs/                             # Runtime logs
 ├── usernames.txt                     # Optional list of GitHub usernames
+│   ├── profile_collector.py         # User profile metadata
+│   └── repo_collector.py            # Repositories, commits, READMEs, scoring
+├── data/
+│   ├── agents/                      # AI agent pipeline for profile analysis
+│   │   ├── agents.py                # LangChain agents (skill, role, summarizer)
+│   │   ├── pipeline.py              # LangGraph orchestration
+│   │   └── tools.py                 # GitHub API utilities
+│   ├── raw/                         # <username>.json (full evidence document)
+│   ├── processed/                   # <username>_summary.json, master_summary.csv
+│   └── preprocessed/                # <username>_preprocessed.json (RAG-ready chunks)
+├── transformers_local/
+│   └── schema_builder.py            # Assembles final JSON schema
+├── preprocessor/
+│   ├── cleaner.py                   # Fix encoding, strip noise, drop empty items
+│   ├── chunker.py                   # Split long evidence into ≤1500-char chunks
+│   ├── historical.py                # Temporal analysis (commits/languages by year)
+│   └── pipeline.py                  # Orchestrates clean → chunk → historical analysis
+├── utils/
+│   └── helpers.py                   # Shared utility functions
+├── logs/                            # run_<timestamp>.json
+├── usernames.txt                    # Individual GitHub profiles for experiments
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -67,18 +88,27 @@ Install dependencies:
 pip install -r requirements.txt
 ```
 
-### 2. Configure GitHub access
-
-Create a `.env` file in the project root:
+### 2. Configure your API keys
 
 ```bash
 cp .env.example .env
+# Edit .env and set:
+# GITHUB_TOKEN=ghp_your_github_token_here
+# GROQ_API_KEY=your_groq_api_key_here
+
+Never commit your `.env` file. Copy `.env.example` to `.env` and fill in your own API keys. The `.env` file is listed in `.gitignore` and will not be pushed to GitHub.
 ```
 
-Add your GitHub token:
+#### GitHub Token
+Generate a **classic personal access token** with **public repo read** scope at: https://github.com/settings/tokens
 
-```env
-GITHUB_TOKEN=ghp_your_token_here
+#### Groq API Key
+Get your API key for AI agent analysis at: https://console.groq.com/keys
+
+### 3. Verify setup
+
+```bash
+python main.py rate-limit
 ```
 
 A classic GitHub Personal Access Token with public read access is enough for public profile/repository collection. Do not commit your `.env` file.
@@ -105,6 +135,79 @@ The updated `main.py` writes both raw and processed v2 outputs.
 
 ---
 
+## Preprocessing
+
+After collection, run the preprocessor to clean, chunk, and analyse the raw data.
+This produces the `data/preprocessed/` files consumed by the retrieval (ChromaDB) step.
+
+### Preprocess a single user
+
+```bash
+python main.py preprocess --username karpathy
+```
+
+### Preprocess all collected users at once
+
+```bash
+python main.py preprocess --all
+```
+
+### Adjust chunk size (default 1500 characters)
+
+```bash
+python main.py preprocess --all --chunk-size 1000
+```
+
+The preprocessor runs three steps internally:
+
+| Step | Module | What it does |
+|------|--------|--------------|
+| Clean | `preprocessor/cleaner.py` | Fixes encoding corruption, strips HTML and badge lines, drops items < 20 chars |
+| Chunk | `preprocessor/chunker.py` | Splits long README evidence into ≤1500-char overlapping segments |
+| Historical analysis | `preprocessor/historical.py` | Derives commit trends, language evolution, and activity signals per year |
+
+---
+
+## AI Agent Analysis
+
+Analyze GitHub profiles using AI agents to extract skills, roles, and professional summaries.
+
+### Analyze a single profile
+
+```bash
+python main.py analyze --username karpathy
+```
+
+### What the agents do
+
+The AI agent pipeline consists of three specialized agents:
+
+| Agent | Purpose | Output |
+|-------|---------|--------|
+| **Skill Extractor** | Analyzes repositories and languages | Technical skills with confidence scores and evidence |
+| **Role Analyzer** | Examines ownership patterns | Developer role (creator, contributor, maintainer, learner) |
+| **Summarizer** | Combines all data | Professional profile summary |
+
+### Sample output
+
+```
+DEVELOPER PROFILE
+
+SKILLS:
+1. Python
+   Confidence: 0.9
+   Justification: Used in majority of repositories
+   Evidence: Repository descriptions and language statistics
+
+ROLE:
+Maintainer - Created 9 out of 10 repositories with high community engagement
+
+SUMMARY:
+Professional summary highlighting expertise, experience, and achievements...
+```
+
+---
+
 ## Output files
 
 | File | Description |
@@ -117,6 +220,94 @@ The updated `main.py` writes both raw and processed v2 outputs.
 ---
 
 ## Raw v2 JSON schema
+|------|-------------|
+| `data/raw/<username>.json` | Full evidence document (all repos, commits, READMEs) |
+| `data/processed/<username>_summary.json` | Lightweight summary (top 10 repos, aggregates) |
+| `data/processed/<username>_summary.md` | Human-readable Markdown (with `--markdown`) |
+| `data/processed/master_summary.csv` | One row per user, key signals |
+| `data/preprocessed/<username>_preprocessed.json` | RAG-ready chunks + historical analysis |
+| `logs/run_<timestamp>.json` | Run metadata, status, timestamps |
+
+---
+
+## Preprocessed JSON schema (`schema_version: 1.1`)
+
+Produced by `python main.py preprocess`. This is the input file for the retrieval module.
+
+```
+{
+  "schema_version": "1.1",
+  "username": "karpathy",
+  "preprocessed_at": "<ISO timestamp>",
+  "source_file": "data/raw/karpathy.json",
+  "historical_analysis": {
+    "commits_by_year":     { "2014": 69, "2015": 127, ... },
+    "languages_by_year":   { "2015": [{"language": "Lua", "bytes": ..., "pct": ...}], ... },
+    "activity_trend":      "growing" | "stable" | "declining",
+    "peak_activity_year":  2015,
+    "tech_evolution": [
+      { "period": "early (2012-2017)", "dominant_languages": ["Lua", "C", "C++"] },
+      { "period": "recent (2021-2026)", "dominant_languages": ["Python", "Cuda"] },
+      { "new_languages": ["Python", "Cuda"], "dropped_languages": ["Lua", "C++"] }
+    ]
+  },
+  "chunks": [
+    {
+      "chunk_id":     "ev_0013_c00",
+      "evidence_id":  "ev_0013",
+      "chunk_index":  0,
+      "total_chunks": 4,
+      "type":         "skill" | "role" | "leadership" | "profile",
+      "source":       "repo:<owner>/<repo>" | "profile:<login>",
+      "content":      "...",
+      "metadata":     { "repo": "...", "field": "...", "stars": ..., ... }
+    }
+  ],
+  "stats": {
+    "original_evidence_count": 559,
+    "items_dropped":            2,
+    "chunks_produced":          660,
+    "avg_chunk_length_chars":   314
+  }
+}
+```
+
+### Chunk types
+
+| Type | Content describes | Key metadata fields |
+|------|-------------------|---------------------|
+| `skill` | Technologies, README text, languages, commit messages, topics | `repo`, `field`, `language`, `stars`, `topics` |
+| `role` | Whether user owns or forked a repo | `repo`, `is_owner`, `forked_from`, `stars`, `forks` |
+| `leadership` | Star count, sustained contributions, multi-year activity | `repo`, `stars`, `forks` |
+| `profile` | Bio or company affiliation | `field`, `login` |
+
+### Loading chunks for embedding (Sushma's retrieval step)
+
+```python
+import json
+
+doc    = json.load(open("data/preprocessed/karpathy_preprocessed.json", encoding="utf-8"))
+texts  = [c["content"]   for c in doc["chunks"]]
+ids    = [c["chunk_id"]  for c in doc["chunks"]]
+metas  = [c["metadata"]  for c in doc["chunks"]]
+```
+
+---
+
+## Output JSON schema
+
+```
+{
+  "schema_version": "1.0",
+  "profile": { ... },           // user metadata
+  "repositories": [ ... ],      // per-repo evidence records, sorted by relevance
+  "aggregate_signals": { ... }, // cross-repo computed features
+  "evidence_index": [ ... ],    // flat list of citable snippets (for RAG chunking)
+  "collection_metadata": { ... }
+}
+```
+
+### Repository record structure
 
 ```json
 {

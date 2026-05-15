@@ -211,6 +211,66 @@ def main() -> None:
         sys.exit(1)
 
     logger.info("All done.")
+@app.command()
+def analyze(
+    username: str = typer.Option(..., "--username", "-u", help="GitHub username to analyze with AI agents"),
+):
+    """Analyze a GitHub profile using AI agents to extract skills, roles, and summary."""
+    from data.agents.pipeline import build_pipeline
+
+    console.print(f"\n[bold cyan]▶ Analyzing:[/bold cyan] {username}")
+    console.print("=" * 50)
+
+    pipeline = build_pipeline()
+
+    # Initial state — only username is known at start
+    initial_state = {
+        "username": username,
+        "skills": "",
+        "roles": "",
+        "summary": ""
+    }
+
+    # Run the full pipeline
+    result = pipeline.invoke(initial_state)
+
+    console.print("\n" + "=" * 50)
+    console.print("DEVELOPER PROFILE")
+    console.print("=" * 50)
+    console.print("\nSKILLS:")
+
+    # Format skills in readable paragraphs
+    skills_data = result["skills"]
+    if isinstance(skills_data, dict) and "skills" in skills_data:
+        skills_list = skills_data["skills"]
+    elif isinstance(skills_data, list):
+        skills_list = skills_data
+    else:
+        console.print(skills_data)
+        skills_list = []
+
+    for i, skill in enumerate(skills_list, 1):
+        console.print(f"\n{i}. {skill['name']}")
+        console.print(f"   Confidence: {skill['confidence']:.1f}")
+        console.print(f"   Justification: {skill['justification']}")
+
+        # Handle evidence - could be strings or dicts
+        evidence_items = []
+        for ev in skill['evidence'][:2]:  # Show first 2 evidence items
+            if isinstance(ev, str):
+                evidence_items.append(ev)
+            elif isinstance(ev, dict):
+                # If it's a dict, try to get a text field or convert to string
+                evidence_items.append(str(ev.get('text', ev)))
+            else:
+                evidence_items.append(str(ev))
+
+        console.print(f"   Evidence: {', '.join(evidence_items)}")
+
+    console.print("\nROLE:")
+    console.print(result["roles"])
+    console.print("\nSUMMARY:")
+    console.print(result["summary"])
 
 
 if __name__ == "__main__":
