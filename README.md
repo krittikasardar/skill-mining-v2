@@ -24,13 +24,18 @@ skill_mining/
 ├── .env.example                      # Example environment configuration
 ├── .gitignore
 ├── usernames.txt                     # Optional list of GitHub usernames
-│
+|
 ├── collectors/
 │   ├── profile_collector.py          # Profile metadata, README, pinned repos, orgs, sponsorship signals
 │   └── repo_collector.py             # Repos, languages, commits, PRs/issues, releases, tooling, scoring
 │
-├── transformers_local/
-│   └── schema_builder.py             # Builds the raw evidence-preserving JSON schema
+├── data/
+│   ├── agents/                       # Agent-based analysis layer
+│   │   ├── agents.py                 # Agents: skill extractor, role analyzer, summarizer
+│   │   ├── pipeline.py               # LangGraph workflow orchestration
+│   │   └── tools.py                  # GitHub helper utilities for agents
+│   ├── raw/                          # <username>_raw_v2.json
++│   └── processed/                    # <username>_processed_v2.json
 │
 ├── preprocessor/
 │   ├── cleaner.py                    # Cleans evidence text while preserving metadata
@@ -38,12 +43,14 @@ skill_mining/
 │   ├── historical.py                 # Builds temporal activity and tech-evolution signals
 │   └── pipeline.py                   # Orchestrates cleaning, chunking, and processed output
 │
+├── scripts/
+│   └── test_agent_workflow.py        # Offline integration test for agents
+│
+├── transformers_local/
+│   └── schema_builder.py             # Builds the raw evidence-preserving JSON schema
+│
 ├── utils/
 │   └── helpers.py                    # Shared helper functions
-│
-├── data/
-│   ├── raw/                          # <username>_raw_v2.json
-│   ├── processed/                    # <username>_processed_v2.json
 │
 └── logs/                             # Runtime logs
 ```
@@ -596,6 +603,102 @@ Check that these files were created:
 data/raw/<username>_raw_v2.json
 data/processed/<username>_processed_v2.json
 ```
+
+---
+
+## Agent-based developer analysis workflow
+
+This repository includes an experimental agent-based analysis layer that augments the existing evidence pipeline with LLM-driven skill extraction, role analysis, and summarization. It is intended as an analysis/insight layer and does not replace the collectors or preprocessing pipeline.
+
+### What it does
+
+- Extracts structured skills, confidence scores, and supporting evidence from collected GitHub data.
+- Infers likely developer roles and contribution patterns.
+- Produces a short human-readable summary describing the developer's focus and strengths.
+
+### How it integrates
+
+- The agents consume evidence from `data/raw/<username>_raw_v2.json` (or the processed outputs) and emit an `analysis state` JSON object that can be stored alongside processed outputs or used separately for downstream analysis.
+- This layer complements the factual collectors; collectors remain the source of truth for raw repository data.
+
+### Files
+
+| File | Description |
+|---|---|
+| `data/agents/agents.py` | Contains the `skill_extractor`, `role_analyzer`, and `summarizer` agents. |
+| `data/agents/pipeline.py` | LangGraph workflow orchestration and execution flow. |
+| `data/agents/tools.py` | Lightweight GitHub helper functions used by the agents. |
+| `scripts/test_agent_workflow.py` | Offline integration test that runs agents with mocked dependencies. |
+
+### Workflow overview & execution flow
+
+- Inputs: `data/raw/<username>_raw_v2.json` (or processed evidence)
+- Steps: skill extraction → role analysis → summarization
+
+Execution flow diagram:
+
+```text
+skill_extractor
+↓
+role_analyzer
+↓
+summarizer
+↓
+END
+```
+
+### Example commands
+
+- Install base + agent extras:
+
+```bash
+pip install -r requirements.txt
+pip install langgraph langchain-groq
+```
+
+- Run the offline integration test:
+
+```bash
+python scripts/test_agent_workflow.py
+```
+
+- Run the LangGraph pipeline (example):
+
+```bash
+python -m data.agents.pipeline run --username janedoe
+```
+
+### Environment variables
+
+| Variable | Purpose |
+|---|---|
+| `GITHUB_TOKEN` | GitHub API token for live collection and agent access to GitHub data. |
+| `GROQ_API_KEY` | API key for Groq LLMs (when using real LLM integration). |
+| `LANGGRAPH_CONFIG` | Optional LangGraph configuration string or path. |
+
+### Additional dependencies
+
+- `langgraph` — workflow orchestration (optional for offline testing)
+- `langchain-groq` (or other LLM connector) — Groq LLM integration
+- `python-dotenv` — load `.env` in development
+
+### Testing
+
+- Use `scripts/test_agent_workflow.py` for offline smoke tests (mocks LLM and GitHub helpers).
+- For live integration, set `GITHUB_TOKEN` and `GROQ_API_KEY` and run the pipeline entrypoint.
+
+Using the included test script you can run a quick dummy/offline agent workflow test:
+
+```bash
+python scripts/test_agent_workflow.py
+```
+Use command for dummy test: python -u scripts/test_agent_workflow.py
+
+### Limitations
+
+- Experimental: outputs are LLM-generated and should be validated before production use.
+- Not a replacement: the agent layer augments but does not replace collectors or preprocessing.
+- Cost & rate limits: LLM calls can incur cost and hit rate limits; prefer offline tests for CI.
 
 ---
 
