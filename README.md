@@ -1,8 +1,15 @@
-# Skill Mining – GitHub Profile Data Collector & Preprocessor
+# Skill Mining – GitHub Profile Evidence Pipeline
 
-A Python pipeline that collects public GitHub profile data, cleans and chunks
-it into RAG-ready evidence, and produces structured JSON output for downstream
-skill/role/leadership inference by LLM agents.
+A Python pipeline for collecting public GitHub profile and repository evidence, enriching it with activity/collaboration signals, and converting it into cleaned, chunked JSON for downstream retrieval, analysis, or reporting.
+
+The current pipeline focuses on **evidence collection and preprocessing**:
+
+1. collect profile-level GitHub data,
+2. collect repository-level evidence,
+3. build an evidence-preserving raw JSON document,
+4. add historical/month-level activity analysis,
+5. clean and chunk the evidence for retrieval,
+6. write raw and processed v2 output files.
 
 ---
 
@@ -10,63 +17,92 @@ skill/role/leadership inference by LLM agents.
 
 ```text
 skill_mining/
-├── config.py                         # Central configuration and feature flags
-├── github_client.py                  # GitHub client, retry, rate-limit helpers
-├── main.py                           # CLI entry point
+├── main.py                           # Main entry point for collection + preprocessing
+├── config.py                         # Environment variables, paths, feature flags, scoring weights
+├── github_client.py                  # GitHub client, retry, and rate-limit helpers
+├── requirements.txt                  # Python dependencies
+├── .env.example                      # Example environment configuration
+├── .gitignore
+├── usernames.txt                     # Optional list of GitHub usernames
+│
 ├── collectors/
-│   ├── profile_collector.py          # Profile metadata, profile README, pinned repos, orgs
-│   └── repo_collector.py             # Repositories, languages, commits, PRs/issues, tooling
+│   ├── profile_collector.py          # Profile metadata, README, pinned repos, orgs, sponsorship signals
+│   └── repo_collector.py             # Repos, languages, commits, PRs/issues, releases, tooling, scoring
+│
 ├── transformers_local/
-│   └── schema_builder.py             # Builds final raw JSON schema and evidence index
+│   └── schema_builder.py             # Builds the raw evidence-preserving JSON schema
+│
 ├── preprocessor/
-│   ├── cleaner.py                    # Cleans evidence text and preserves metadata
-│   ├── chunker.py                    # Chunks evidence for embedding/RAG
-│   ├── historical.py                 # Yearly/monthly activity and tech evolution analysis
-│   └── pipeline.py                   # Preprocessing orchestration
+│   ├── cleaner.py                    # Cleans evidence text while preserving metadata
+│   ├── chunker.py                    # Splits evidence into RAG-friendly chunks
+│   ├── historical.py                 # Builds temporal activity and tech-evolution signals
+│   └── pipeline.py                   # Orchestrates cleaning, chunking, and processed output
+│
 ├── utils/
-│   └── helpers.py                    # Shared utility functions
+│   └── helpers.py                    # Shared helper functions
+│
 ├── data/
 │   ├── raw/                          # <username>_raw_v2.json
 │   ├── processed/                    # <username>_processed_v2.json
-│   └── preprocessed/                 # Optional file-based preprocessing output
-├── logs/                             # Runtime logs
-├── usernames.txt                     # Optional list of GitHub usernames
-│   ├── profile_collector.py         # User profile metadata
-│   └── repo_collector.py            # Repositories, commits, READMEs, scoring
-├── data/
-│   ├── agents/                      # AI agent pipeline for profile analysis
-│   │   ├── agents.py                # LangChain agents (skill, role, summarizer)
-│   │   ├── pipeline.py              # LangGraph orchestration
-│   │   └── tools.py                 # GitHub API utilities
-│   ├── raw/                         # <username>.json (full evidence document)
-│   ├── processed/                   # <username>_summary.json, master_summary.csv
-│   └── preprocessed/                # <username>_preprocessed.json (RAG-ready chunks)
-├── transformers_local/
-│   └── schema_builder.py            # Assembles final JSON schema
-├── preprocessor/
-│   ├── cleaner.py                   # Fix encoding, strip noise, drop empty items
-│   ├── chunker.py                   # Split long evidence into ≤1500-char chunks
-│   ├── historical.py                # Temporal analysis (commits/languages by year)
-│   └── pipeline.py                  # Orchestrates clean → chunk → historical analysis
-├── utils/
-│   └── helpers.py                   # Shared utility functions
-├── logs/                            # run_<timestamp>.json
-├── usernames.txt                    # Individual GitHub profiles for experiments
-├── requirements.txt
-├── .env.example
-└── README.md
+│
+└── logs/                             # Runtime logs
 ```
 
-> If your repository uses `transformers/` instead of `transformers_local/`, keep the folder name consistent with your imports. The updated `main.py` supports flexible schema-builder imports.
+> The current code imports `schema_builder.py` flexibly from `transformers_local/`, `transformers/`, or the project root. Keep the folder name consistent with the version used in your repository.
+
+---
+
+## What the pipeline collects
+
+### Profile-level evidence
+
+The profile collector gathers public GitHub user information such as:
+
+- login, name, bio, company, location, email, blog, avatar URL, and profile URL
+- followers, following, public repositories, and public gists
+- account creation/update dates
+- hireable status
+- years on GitHub
+- followers-to-following ratio
+- profile README from the special `<username>/<username>` repository
+- pinned repositories through GitHub GraphQL
+- public organisation memberships
+- GitHub Sponsors-related signals, when available
+
+### Repository-level evidence
+
+For each public repository, the repository collector gathers:
+
+- repository metadata such as name, description, URL, language, stars, forks, size, license, dates, topics, and default branch
+- language breakdown
+- README excerpt
+- commit samples and commit-depth statistics
+- yearly and monthly commit counts
+- total lines added/deleted from sampled commits
+- commit message quality proxy score
+- ownership/fork information
+- PR and issue statistics
+- contributor count
+- release count and latest release information
+- CI/CD, tests, contributing guide, code of conduct, and dependency indicators
+- detected frameworks, DevOps tools, testing tools, CI platforms, cloud platforms, databases, and API patterns
+- documentation quality score
+- relevance score for ranking repositories
 
 ---
 
 ## Setup
 
-### 1. Create and activate a virtual environment
+### 1. Clone the repository and enter the project folder
 
 ```bash
+git clone <your-repo-url>
 cd skill_mining
+```
+
+### 2. Create and activate a virtual environment
+
+```bash
 python -m venv .venv
 ```
 
@@ -82,232 +118,155 @@ On Windows PowerShell:
 .venv\Scripts\Activate.ps1
 ```
 
-Install dependencies:
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Configure your API keys
+Main dependencies include:
+
+- `PyGithub`
+- `python-dotenv`
+- `requests`
+- `typer`
+- `rich`
+- `tenacity`
+- `diskcache`
+- `pandas`
+
+### 4. Configure environment variables
+
+Copy the example environment file:
 
 ```bash
 cp .env.example .env
-# Edit .env and set:
-# GITHUB_TOKEN=ghp_your_github_token_here
-# GROQ_API_KEY=your_groq_api_key_here
-
-Never commit your `.env` file. Copy `.env.example` to `.env` and fill in your own API keys. The `.env` file is listed in `.gitignore` and will not be pushed to GitHub.
 ```
 
-#### GitHub Token
-Generate a **classic personal access token** with **public repo read** scope at: https://github.com/settings/tokens
+On Windows PowerShell:
 
-#### Groq API Key
-Get your API key for AI agent analysis at: https://console.groq.com/keys
-
-### 3. Verify setup
-
-```bash
-python main.py rate-limit
+```powershell
+Copy-Item .env.example .env
 ```
 
-A classic GitHub Personal Access Token with public read access is enough for public profile/repository collection. Do not commit your `.env` file.
+Then edit `.env` and set your GitHub token:
 
-The pipeline can run without a token, but the GitHub API rate limit will be much lower and some GraphQL-based features such as pinned repositories may not work reliably.
+```env
+GITHUB_TOKEN=your_github_token_here
+COMMITS_PER_REPO=20
+MAX_REPOS_PER_USER=100
+```
+
+A GitHub token is strongly recommended. The pipeline can make some unauthenticated calls, but rate limits will be much lower and GraphQL-only fields such as pinned repositories may be skipped.
+
+Never commit your `.env` file.
+
+---
+
+## Configuration reference
+
+Important configuration values are read in `config.py`.
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `GITHUB_TOKEN` | empty | GitHub API token. Recommended for higher rate limits and GraphQL features |
+| `OUTPUT_DIR` | `./data` | Base output directory |
+| `MAX_REPOS_PER_USER` | `200` | Maximum public repositories collected per user |
+| `COMMITS_PER_REPO` | `30` | Number of representative commit samples stored per repository |
+| `MAX_COMMITS_TO_SCAN_PER_REPO` | `500` | Maximum commits scanned per repository for statistics |
+| `README_MAX_CHARS` | `4000` | Maximum README characters stored as evidence |
+| `PROFILE_README_MAX_CHARS` | `5000` | Maximum profile README characters stored |
+| `ENABLE_COLLABORATION_COLLECTION` | `true` | Enables PR/issue-related collection flags |
+| `ENABLE_RELEASE_COLLECTION` | `true` | Enables release metadata collection flags |
+| `ENABLE_ENGINEERING_MATURITY_COLLECTION` | `true` | Enables CI/test/docs/dependency collection flags |
+| `ENABLE_TOOLING_DETECTION` | `true` | Enables framework/tool/cloud/database/API detection flags |
+| `ENABLE_PROFILE_README` | `true` | Enables profile README collection flags |
+| `ENABLE_PINNED_REPOSITORIES` | `true` | Enables pinned repository collection flags |
+| `ENABLE_ORGANISATION_COLLECTION` | `true` | Enables public organisation collection flags |
+| `ENABLE_SPONSORSHIP_COLLECTION` | `true` | Enables sponsorship signal collection flags |
+| `ENABLE_HISTORICAL_MONTHLY_ANALYSIS` | `true` | Enables monthly historical activity fields |
+| `INACTIVE_GAP_THRESHOLD_MONTHS` | `3` | Minimum inactive gap length to report |
+| `RECENT_ACTIVITY_MONTHS` | `6` | Recent activity window |
+| `ENABLE_CACHE` | `false` | Enables disk cache |
+| `CACHE_TTL_SECONDS` | `86400` | Cache lifetime in seconds |
+| `SCORE_THRESHOLD` | `0.0` | Minimum repository relevance score |
+| `LOG_LEVEL` | `INFO` | Logging level |
+
+Repository relevance scoring uses these default weights:
+
+| Signal | Weight |
+|---|---:|
+| Stars | `0.25` |
+| Forks | `0.20` |
+| Repository size | `0.10` |
+| Ownership | `0.20` |
+| Recency | `0.15` |
+| Age bonus | `0.10` |
 
 ---
 
 ## Usage
 
-### Collect usernames from `usernames.txt`
+### Option 1: Collect profiles listed in `usernames.txt`
+
+Add one GitHub username per line:
+
+```text
+torvalds
+octocat
+karpathy
+```
+
+Then run:
 
 ```bash
 python main.py
 ```
 
-### Collect one or more specific profiles
+### Option 2: Collect specific profiles from the command line
 
 ```bash
 python main.py torvalds octocat
 ```
 
-The updated `main.py` writes both raw and processed v2 outputs.
-
----
-
-## Preprocessing
-
-After collection, run the preprocessor to clean, chunk, and analyse the raw data.
-This produces the `data/preprocessed/` files consumed by the retrieval (ChromaDB) step.
-
-### Preprocess a single user
+You can pass multiple usernames in one run:
 
 ```bash
-python main.py preprocess --username karpathy
+python main.py tiangolo nayafia hnarayanan
 ```
 
-### Preprocess all collected users at once
+For each username, the pipeline automatically:
 
-```bash
-python main.py preprocess --all
-```
-
-### Adjust chunk size (default 1500 characters)
-
-```bash
-python main.py preprocess --all --chunk-size 1000
-```
-
-The preprocessor runs three steps internally:
-
-| Step | Module | What it does |
-|------|--------|--------------|
-| Clean | `preprocessor/cleaner.py` | Fixes encoding corruption, strips HTML and badge lines, drops items < 20 chars |
-| Chunk | `preprocessor/chunker.py` | Splits long README evidence into ≤1500-char overlapping segments |
-| Historical analysis | `preprocessor/historical.py` | Derives commit trends, language evolution, and activity signals per year |
-
----
-
-## AI Agent Analysis
-
-Analyze GitHub profiles using AI agents to extract skills, roles, and professional summaries.
-
-### Analyze a single profile
-
-```bash
-python main.py analyze --username karpathy
-```
-
-### What the agents do
-
-The AI agent pipeline consists of three specialized agents:
-
-| Agent | Purpose | Output |
-|-------|---------|--------|
-| **Skill Extractor** | Analyzes repositories and languages | Technical skills with confidence scores and evidence |
-| **Role Analyzer** | Examines ownership patterns | Developer role (creator, contributor, maintainer, learner) |
-| **Summarizer** | Combines all data | Professional profile summary |
-
-### Sample output
-
-```
-DEVELOPER PROFILE
-
-SKILLS:
-1. Python
-   Confidence: 0.9
-   Justification: Used in majority of repositories
-   Evidence: Repository descriptions and language statistics
-
-ROLE:
-Maintainer - Created 9 out of 10 repositories with high community engagement
-
-SUMMARY:
-Professional summary highlighting expertise, experience, and achievements...
-```
+1. collects the profile,
+2. collects repositories,
+3. builds the raw v2 schema,
+4. adds historical analysis,
+5. writes the raw JSON file,
+6. runs the preprocessing pipeline,
+7. writes the processed JSON file.
 
 ---
 
 ## Output files
 
+For each username, the main pipeline writes:
+
 | File | Description |
 |---|---|
-| `data/raw/<username>_raw_v2.json` | Full evidence-preserving document with profile, repositories, aggregate signals, evidence index, and historical analysis |
-| `data/processed/<username>_processed_v2.json` | Cleaned and chunked output for downstream RAG/agent use |
-| `data/preprocessed/<username>_preprocessed.json` | Optional output when using file-based preprocessing directly |
-| `logs/` | Runtime logs |
+| `data/raw/<username>_raw_v2.json` | Full evidence-preserving raw document |
+| `data/processed/<username>_processed_v2.json` | Cleaned and chunked processed document for retrieval/LLM use |
+
+The file-based preprocessing API can also write:
+
+| File | Description |
+|---|---|
+| `data/preprocessed/<username>_preprocessed.json` | Optional output when preprocessing an existing raw JSON file directly |
 
 ---
 
-## Raw v2 JSON schema
-|------|-------------|
-| `data/raw/<username>.json` | Full evidence document (all repos, commits, READMEs) |
-| `data/processed/<username>_summary.json` | Lightweight summary (top 10 repos, aggregates) |
-| `data/processed/<username>_summary.md` | Human-readable Markdown (with `--markdown`) |
-| `data/processed/master_summary.csv` | One row per user, key signals |
-| `data/preprocessed/<username>_preprocessed.json` | RAG-ready chunks + historical analysis |
-| `logs/run_<timestamp>.json` | Run metadata, status, timestamps |
+## Raw v2 JSON structure
 
----
-
-## Preprocessed JSON schema (`schema_version: 1.1`)
-
-Produced by `python main.py preprocess`. This is the input file for the retrieval module.
-
-```
-{
-  "schema_version": "1.1",
-  "username": "karpathy",
-  "preprocessed_at": "<ISO timestamp>",
-  "source_file": "data/raw/karpathy.json",
-  "historical_analysis": {
-    "commits_by_year":     { "2014": 69, "2015": 127, ... },
-    "languages_by_year":   { "2015": [{"language": "Lua", "bytes": ..., "pct": ...}], ... },
-    "activity_trend":      "growing" | "stable" | "declining",
-    "peak_activity_year":  2015,
-    "tech_evolution": [
-      { "period": "early (2012-2017)", "dominant_languages": ["Lua", "C", "C++"] },
-      { "period": "recent (2021-2026)", "dominant_languages": ["Python", "Cuda"] },
-      { "new_languages": ["Python", "Cuda"], "dropped_languages": ["Lua", "C++"] }
-    ]
-  },
-  "chunks": [
-    {
-      "chunk_id":     "ev_0013_c00",
-      "evidence_id":  "ev_0013",
-      "chunk_index":  0,
-      "total_chunks": 4,
-      "type":         "skill" | "role" | "leadership" | "profile",
-      "source":       "repo:<owner>/<repo>" | "profile:<login>",
-      "content":      "...",
-      "metadata":     { "repo": "...", "field": "...", "stars": ..., ... }
-    }
-  ],
-  "stats": {
-    "original_evidence_count": 559,
-    "items_dropped":            2,
-    "chunks_produced":          660,
-    "avg_chunk_length_chars":   314
-  }
-}
-```
-
-### Chunk types
-
-| Type | Content describes | Key metadata fields |
-|------|-------------------|---------------------|
-| `skill` | Technologies, README text, languages, commit messages, topics | `repo`, `field`, `language`, `stars`, `topics` |
-| `role` | Whether user owns or forked a repo | `repo`, `is_owner`, `forked_from`, `stars`, `forks` |
-| `leadership` | Star count, sustained contributions, multi-year activity | `repo`, `stars`, `forks` |
-| `profile` | Bio or company affiliation | `field`, `login` |
-
-### Loading chunks for embedding (Sushma's retrieval step)
-
-```python
-import json
-
-doc    = json.load(open("data/preprocessed/karpathy_preprocessed.json", encoding="utf-8"))
-texts  = [c["content"]   for c in doc["chunks"]]
-ids    = [c["chunk_id"]  for c in doc["chunks"]]
-metas  = [c["metadata"]  for c in doc["chunks"]]
-```
-
----
-
-## Output JSON schema
-
-```
-{
-  "schema_version": "1.0",
-  "profile": { ... },           // user metadata
-  "repositories": [ ... ],      // per-repo evidence records, sorted by relevance
-  "aggregate_signals": { ... }, // cross-repo computed features
-  "evidence_index": [ ... ],    // flat list of citable snippets (for RAG chunking)
-  "collection_metadata": { ... }
-}
-```
-
-### Repository record structure
+The raw output contains the complete collected evidence before cleaning/chunking.
 
 ```json
 {
@@ -321,161 +280,140 @@ metas  = [c["metadata"]  for c in doc["chunks"]]
 }
 ```
 
----
+### Main raw sections
 
-## Profile fields
-
-The profile collector keeps the original GitHub profile metadata and adds richer v2 context:
-
-```json
-{
-  "login": "...",
-  "name": "...",
-  "bio": "...",
-  "company": "...",
-  "location": "...",
-  "followers": 0,
-  "following": 0,
-  "public_repos": 0,
-  "hireable": null,
-  "years_on_github": 0,
-  "followers_to_following_ratio": 0.0,
-  "profile_readme": "...",
-  "profile_readme_content": "...",
-  "pinned_repositories": [],
-  "organisations": [],
-  "organisations_member_of": [],
-  "is_sponsored": false,
-  "sponsoring_count": 0
-}
-```
+| Section | Description |
+|---|---|
+| `profile` | GitHub profile metadata, profile README, pinned repos, organisations, sponsorship signals |
+| `repositories` | Per-repository metadata, skill evidence, role evidence, leadership evidence, and text evidence |
+| `aggregate_signals` | Cross-repository signals such as languages, stars, forks, commits, PRs, issues, and activity patterns |
+| `historical_analysis` | Commit trends, language evolution, monthly heatmap, inactive periods, and repo creation cadence |
+| `evidence_index` | Flat list of citable evidence snippets used for downstream chunking |
+| `collection_metadata` | Runtime metadata such as username, elapsed time, repo count, and output file names |
 
 ---
 
 ## Repository record structure
 
-Each repository contains metadata, skill evidence, role evidence, leadership evidence, and raw text evidence.
+Each repository in `repositories` follows this high-level structure:
 
 ```json
 {
-  "repository_metadata": {
-    "name": "...",
-    "full_name": "...",
-    "description": "...",
-    "language": "Python",
-    "topics": [],
-    "stargazers_count": 0,
-    "forks_count": 0,
-    "created_at": "...",
-    "pushed_at": "...",
-    "has_ci_cd": false,
-    "has_tests": false,
-    "has_contributing_guide": false,
-    "has_code_of_conduct": false,
-    "dependency_count": 0,
-    "releases_count": 0,
-    "latest_release_tag": null,
-    "latest_release_date": null,
-    "contributor_count": 0
-  },
-  "relevance_score": 0.73,
-  "skill_evidence": {
-    "primary_language": "Python",
-    "languages_used": [],
-    "language_breakdown": {},
-    "topics": [],
-    "readme_keywords": [],
-    "commit_count_sampled": 30,
-    "total_commit_count": 120,
-    "total_commits_to_repo": 120,
-    "commit_frequency_per_year": {},
-    "avg_commits_per_active_month": 4.2,
-    "last_commit_date": "...",
-    "total_lines_added": 0,
-    "total_lines_deleted": 0,
-    "commit_size_distribution": {
-      "small": 0,
-      "medium": 0,
-      "large": 0
-    },
-    "commit_message_quality_score": 0.0,
-    "contribution_gap_months": 0,
-    "frameworks_detected": [],
-    "devops_tools_detected": [],
-    "testing_frameworks_detected": [],
-    "ci_platforms_detected": [],
-    "cloud_platforms_detected": [],
-    "db_technologies_detected": [],
-    "api_patterns_detected": [],
-    "documentation_quality_score": 0
-  },
-  "role_evidence": {
-    "is_owner": true,
-    "is_fork": false,
-    "forked_from": null,
-    "stars_received": 0,
-    "forks_received": 0,
-    "issues_opened_count": 0,
-    "closed_issues_count": 0,
-    "pr_open_count": 0,
-    "pr_closed_count": 0,
-    "pr_merged_count": 0,
-    "pr_merge_rate_pct": null,
-    "avg_issue_close_time_days": null,
-    "contributor_count": 0
-  },
-  "leadership_evidence": {
-    "signals": [],
-    "commit_year_span": {}
-  },
-  "raw_text_evidence": {
-    "readme_excerpt": "...",
-    "commit_samples": [],
-    "description": "..."
-  }
+  "repository_metadata": {},
+  "relevance_score": 0.0,
+  "skill_evidence": {},
+  "role_evidence": {},
+  "leadership_evidence": {},
+  "raw_text_evidence": {}
 }
 ```
 
----
+### `repository_metadata`
 
-## Aggregate signals
-
-The v2 aggregate layer includes both classic profile-wide summaries and richer data-gap fields:
+Contains core repository information and engineering maturity signals:
 
 ```json
 {
-  "top_languages": [],
-  "top_topics": [],
-  "total_stars_received": 0,
-  "total_forks_received": 0,
-  "total_repos_collected": 0,
-  "owned_repo_count": 0,
-  "forked_repo_count": 0,
-  "active_years": [],
-  "first_active_year": null,
-  "last_active_year": null,
-  "activity_span_years": 0,
-  "monthly_commit_heatmap": {},
-  "recent_6_month_commit_count": 0,
-  "total_commits_all_repos": 0,
-  "total_lines_added_all_repos": 0,
-  "total_lines_deleted_all_repos": 0,
-  "total_prs_opened": 0,
-  "total_prs_closed": 0,
-  "total_prs_merged": 0,
-  "total_issues_opened": 0,
-  "total_issues_closed": 0,
-  "external_contributions_count": 0,
-  "longest_contribution_streak_months": 0,
-  "most_active_year": null,
-  "inactive_periods": [],
-  "collection_completeness_pct": null,
-  "repos_with_ci_cd": 0,
-  "repos_with_tests": 0,
-  "top_frameworks_detected": [],
-  "top_devops_tools_detected": [],
-  "top_cloud_platforms_detected": [],
-  "top_database_technologies_detected": []
+  "name": "...",
+  "full_name": "...",
+  "description": "...",
+  "html_url": "...",
+  "language": "Python",
+  "stargazers_count": 0,
+  "forks_count": 0,
+  "size": 0,
+  "default_branch": "main",
+  "fork": false,
+  "archived": false,
+  "created_at": "...",
+  "updated_at": "...",
+  "pushed_at": "...",
+  "license": "...",
+  "topics": [],
+  "has_ci_cd": false,
+  "has_tests": false,
+  "has_contributing_guide": false,
+  "has_code_of_conduct": false,
+  "dependency_count": 0,
+  "releases_count": 0,
+  "latest_release_tag": null,
+  "latest_release_date": null,
+  "contributor_count": 0
+}
+```
+
+### `skill_evidence`
+
+Contains technical and activity-related evidence:
+
+```json
+{
+  "primary_language": "Python",
+  "languages_used": [],
+  "language_breakdown": {},
+  "readme_keywords": [],
+  "commit_count_sampled": 0,
+  "total_commit_count": 0,
+  "commit_frequency_per_year": {},
+  "avg_commits_per_active_month": 0.0,
+  "last_commit_date": null,
+  "total_lines_added": 0,
+  "total_lines_deleted": 0,
+  "commit_message_quality_score": 0.0,
+  "contribution_gap_months": 0,
+  "frameworks_detected": [],
+  "devops_tools_detected": [],
+  "testing_frameworks_detected": [],
+  "ci_platforms_detected": [],
+  "cloud_platforms_detected": [],
+  "db_technologies_detected": [],
+  "api_patterns_detected": [],
+  "documentation_quality_score": 0
+}
+```
+
+### `role_evidence`
+
+Contains ownership, collaboration, and maintainer-related evidence:
+
+```json
+{
+  "is_owner": true,
+  "is_fork": false,
+  "forked_from": null,
+  "stars_received": 0,
+  "forks_received": 0,
+  "issues_opened_count": 0,
+  "closed_issues_count": 0,
+  "pr_open_count": 0,
+  "pr_closed_count": 0,
+  "pr_merged_count": 0,
+  "pr_merge_rate_pct": null,
+  "avg_issue_close_time_days": null,
+  "contributor_count": 0
+}
+```
+
+### `leadership_evidence`
+
+Contains leadership-style repository signals:
+
+```json
+{
+  "signals": [],
+  "commit_year_span": {}
+}
+```
+
+### `raw_text_evidence`
+
+Contains README and commit text evidence:
+
+```json
+{
+  "readme_excerpt": "...",
+  "commit_samples": [],
+  "description": "..."
 }
 ```
 
@@ -483,7 +421,7 @@ The v2 aggregate layer includes both classic profile-wide summaries and richer d
 
 ## Historical analysis
 
-The historical preprocessor now supports both year-level and month-level signals:
+The historical module produces temporal and technology-evolution signals.
 
 ```json
 {
@@ -493,7 +431,7 @@ The historical preprocessor now supports both year-level and month-level signals
   "peak_activity_year": null,
   "tech_evolution": [],
   "monthly_commit_heatmap": {},
-  "weekday_vs_weekend_ratio": null,
+  "weekday_vs_weekend_ratio": {},
   "most_active_month_of_year": null,
   "inactive_periods": [],
   "recent_6_month_commit_count": 0,
@@ -501,11 +439,63 @@ The historical preprocessor now supports both year-level and month-level signals
 }
 ```
 
+### Historical fields
+
+| Field | Meaning |
+|---|---|
+| `commits_by_year` | Commit counts per year |
+| `languages_by_year` | Dominant languages by year |
+| `activity_trend` | `growing`, `stable`, or `declining` |
+| `peak_activity_year` | Year with the highest commit count |
+| `tech_evolution` | Language shifts from early to recent periods |
+| `monthly_commit_heatmap` | Commit counts by `YYYY-MM` |
+| `weekday_vs_weekend_ratio` | Weekday/weekend commit distribution from sampled commits |
+| `most_active_month_of_year` | Calendar month with highest total activity |
+| `inactive_periods` | Gaps between active commit months |
+| `recent_6_month_commit_count` | Recent activity count |
+| `repo_creation_cadence` | Repository creation counts and average repos/year |
+
 ---
 
-## Evidence index and chunks
+## Processed v2 JSON structure
 
-The evidence index is a flat list of citable evidence snippets. It supports these evidence types:
+The processed output is created by `preprocessor/pipeline.py`.
+
+```json
+{
+  "schema_version": "2.0",
+  "username": "...",
+  "preprocessed_at": "...",
+  "source_schema_version": "2.0",
+  "profile": {},
+  "aggregate_signals": {},
+  "historical_analysis": {},
+  "repositories": [],
+  "evidence_index": [],
+  "chunks": [],
+  "stats": {},
+  "collection_metadata": {},
+  "preprocessing_metadata": {}
+}
+```
+
+The processed file preserves high-value context from the raw file while adding cleaned and chunked evidence for retrieval.
+
+---
+
+## Evidence cleaning
+
+The cleaner:
+
+- removes Unicode replacement corruption,
+- strips simple HTML tags,
+- removes badge/shield noise lines,
+- collapses excessive whitespace,
+- preserves metadata,
+- keeps short but useful structured evidence such as commit and contribution signals,
+- drops only genuinely empty or very low-signal items.
+
+Supported evidence types include:
 
 ```text
 profile
@@ -516,7 +506,13 @@ commit
 contribution
 ```
 
-After preprocessing, evidence items are cleaned and split into chunks while preserving:
+---
+
+## Evidence chunking
+
+The chunker splits cleaned evidence into RAG-friendly chunks while preserving traceability.
+
+Each chunk contains:
 
 ```json
 {
@@ -531,74 +527,64 @@ After preprocessing, evidence items are cleaned and split into chunks while pres
 }
 ```
 
----
+Default chunk settings:
 
-## Configuration reference
-
-Important `.env` variables:
-
-| Variable | Default | Description |
-|---|---:|---|
-| `GITHUB_TOKEN` | empty | GitHub token. Strongly recommended for higher rate limits and GraphQL features |
-| `MAX_REPOS_PER_USER` | `200` | Maximum public repositories to collect per user |
-| `COMMITS_PER_REPO` | `30` | Number of representative commit samples stored per repo |
-| `MAX_COMMITS_TO_SCAN_PER_REPO` | `500` | Maximum commits scanned per repo for activity statistics |
-| `README_MAX_CHARS` | `4000` | README excerpt length |
-| `ENABLE_CACHE` | `false` | Enable disk cache |
-| `CACHE_TTL_SECONDS` | `86400` | Cache lifetime |
-| `SCORE_THRESHOLD` | `0.0` | Minimum relevance score; `0.0` keeps all collected repos |
-| `LOG_LEVEL` | `INFO` | Logging level |
-| `ENABLE_COLLABORATION_COLLECTION` | `true` | Collect PR/issue stats |
-| `ENABLE_RELEASE_COLLECTION` | `true` | Collect release info |
-| `ENABLE_ENGINEERING_MATURITY_COLLECTION` | `true` | Collect CI/test/docs/dependency signals |
-| `ENABLE_TOOLING_DETECTION` | `true` | Detect frameworks, DevOps, cloud, DB, API signals |
-| `ENABLE_PROFILE_README` | `true` | Collect profile README |
-| `ENABLE_PINNED_REPOSITORIES` | `true` | Collect pinned repos through GraphQL |
-| `ENABLE_ORGANISATION_COLLECTION` | `true` | Collect public org memberships |
-| `ENABLE_SPONSORSHIP_COLLECTION` | `true` | Collect sponsorship signals |
-| `ENABLE_HISTORICAL_MONTHLY_ANALYSIS` | `true` | Produce month-level historical analysis |
-| `INACTIVE_GAP_THRESHOLD_MONTHS` | `3` | Minimum inactive gap length to report |
-| `RECENT_ACTIVITY_MONTHS` | `6` | Recent activity window |
-
----
-
-## Design notes
-
-### Historical coverage
-
-- All public repositories are retained up to `MAX_REPOS_PER_USER`.
-- Commit samples are spread across repository history.
-- Total commit count is collected separately from sampled commit messages.
-- Monthly heatmaps and inactive periods help avoid relying only on recent activity.
-
-### Evidence grounding
-
-- Every important claim should be traceable to profile, repository, commit, contribution, or leadership evidence.
-- The `evidence_index` is designed for downstream chunking and embeddings.
-- Metadata is preserved so RAG outputs can cite repository names, commit dates, PR/issue counts, and detected tools.
-
-### Collaboration and role signals
-
-The pipeline captures ownership, forks, PR counts, merge rate, issue closure signals, contributor count, stars, forks, releases, and engineering maturity signals.
-
-### Relevance scoring
-
-Repository ranking uses a transparent weighted formula from `config.SCORING_WEIGHTS`:
-
-| Signal | Default weight |
+| Evidence type | Max characters |
 |---|---:|
-| Stars | 0.25 |
-| Forks | 0.20 |
-| Size | 0.10 |
-| Ownership | 0.20 |
-| Recency | 0.15 |
-| Age bonus | 0.10 |
+| `profile` | `1800` |
+| `skill` | `1500` |
+| `role` | `1200` |
+| `leadership` | `1200` |
+| `commit` | `900` |
+| `contribution` | `1000` |
+
+---
+
+## Loading chunks for retrieval
+
+Example:
+
+```python
+import json
+
+with open("data/processed/karpathy_processed_v2.json", encoding="utf-8") as f:
+    doc = json.load(f)
+
+texts = [chunk["content"] for chunk in doc["chunks"]]
+ids = [chunk["chunk_id"] for chunk in doc["chunks"]]
+metadatas = [chunk["metadata"] for chunk in doc["chunks"]]
+```
+
+These `texts`, `ids`, and `metadatas` can be passed to an embedding model or vector database.
+
+---
+
+## Programmatic preprocessing
+
+The main pipeline already runs preprocessing automatically.
+
+If you want to preprocess an existing raw JSON file manually from Python:
+
+```python
+from pathlib import Path
+from preprocessor.pipeline import preprocess
+
+preprocess(Path("data/raw/karpathy_raw_v2.json"))
+```
+
+To preprocess all raw JSON files programmatically:
+
+```python
+from preprocessor.pipeline import preprocess_all
+
+preprocess_all()
+```
 
 ---
 
 ## Recommended run checklist
 
-Before running:
+Before running the pipeline, compile-check the main modules:
 
 ```bash
 python -m py_compile config.py github_client.py main.py collectors/profile_collector.py collectors/repo_collector.py preprocessor/*.py utils/helpers.py
@@ -610,9 +596,28 @@ Then run:
 python main.py <github_username>
 ```
 
-Check outputs:
+Check that these files were created:
 
 ```text
 data/raw/<username>_raw_v2.json
 data/processed/<username>_processed_v2.json
 ```
+
+---
+
+## Notes and current limitations
+
+- The pipeline only collects public GitHub data.
+- A GitHub token is strongly recommended because some fields depend on authenticated requests or GraphQL.
+- Commit statistics are bounded by configured scan/sample limits, so they should be treated as evidence signals rather than a perfect complete history.
+- Tooling detection and documentation quality scores are heuristic signals based on README text and repository file paths.
+- Relevance scoring is transparent and configurable, but it is still a heuristic ranking method.
+
+---
+
+## Security notes
+
+- Do not commit `.env`.
+- Do not expose your GitHub token.
+- Keep raw collected data out of public repositories if it contains information you do not want to redistribute.
+- This project should be used only with public GitHub data and in compliance with GitHub's API terms.
