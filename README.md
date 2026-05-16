@@ -256,12 +256,6 @@ For each username, the main pipeline writes:
 | `data/raw/<username>_raw_v2.json` | Full evidence-preserving raw document |
 | `data/processed/<username>_processed_v2.json` | Cleaned and chunked processed document for retrieval/LLM use |
 
-The file-based preprocessing API can also write:
-
-| File | Description |
-|---|---|
-| `data/preprocessed/<username>_preprocessed.json` | Optional output when preprocessing an existing raw JSON file directly |
-
 ---
 
 ## Raw v2 JSON structure
