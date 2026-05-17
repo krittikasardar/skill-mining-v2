@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     langsmith_endpoint: str = Field("https://api.smith.langchain.com", env="LANGSMITH_ENDPOINT")
 
     # DeepEval / Response Saving
-    save_responses: bool = Field(False, env="SAVE_RESPONSES")
+    save_responses: bool = Field(True, env="SAVE_RESPONSES")
     eval_log_dir: str = Field("./eval_logs", env="EVAL_LOG_DIR")
 
     class Config:
