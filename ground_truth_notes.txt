@@ -1,0 +1,77 @@
+GROUND TRUTH FILE — ground_truth.json
+======================================
+Author : Satwik (Preprocessing Lead, Team 7)
+Created: 2026-05-17
+Status : Local only — not pushed to git
+
+PURPOSE
+-------
+This file is the "answer key" for evaluating the AI agents' outputs.
+When the agents produce a developer profile, their output is compared against
+this file to check whether they got the skills, role, leadership, and summary right.
+
+SECTIONS
+--------
+
+1. hr_use_case
+   Defines the scenario: an HR professional wants to assess a GitHub developer
+   profile before an interview. The three key questions are:
+     - What are their core technical skills?
+     - Do they create original work or mainly contribute to others' projects?
+     - Do they show leadership (widely-used projects, community maintenance)?
+
+   Also defines the expected output format:
+     - top_skills     : list of 3-6 specific skills with evidence
+     - role_label     : Creator / Contributor / Learner
+     - leadership_label : High / Medium / Low
+     - consistency_label: Consistent / Periodic / Inactive
+     - hr_summary     : 2-3 sentence plain-English profile for HR
+
+2. evaluation_rubric
+   Five dimensions scored 1-5:
+     - factual_accuracy   : are agent claims backed by real GitHub evidence?
+     - skill_coverage     : did the agent surface the right skills?
+     - role_detection     : correct Creator/Contributor/Learner label?
+     - leadership_detection: correct High/Medium/Low label?
+     - evidence_grounding : did the agent cite specific repos/commits?
+
+3. profiles (10 entries)
+   One entry per developer. Each has:
+     - top_skills[]          : skills we expect the agent to find
+     - role_label            : Creator / Contributor / Learner
+     - role_justification    : why this label applies
+     - leadership_label      : High / Medium / Low
+     - leadership_justification
+     - consistency_label     : Consistent / Periodic / Inactive
+     - consistency_justification
+     - hr_summary            : reference-quality human-readable summary
+     - data_note (optional)  : flags known data gaps
+
+THE 10 PROFILES
+---------------
+Profile          Role         Leadership   Consistency
+karpathy         Creator      High         Consistent
+sindresorhus     Creator      High         Consistent
+ryanmcdermott    Creator      High         Periodic
+tiangolo         Creator      High         Consistent
+chiphuyen        Creator      High         Consistent
+justmarkham      Creator      High         Periodic
+honnibal         Contributor  High         Consistent   <-- data note: core work under @explosion org
+ines             Creator      High         Consistent
+hnarayanan       Creator      Medium       Periodic
+nayafia          Creator      High         Periodic     <-- data note: writing/research, not code-heavy
+
+KNOWN DATA GAPS (flagged with data_note)
+-----------------------------------------
+- honnibal  : personal stars (451) are misleading. Real impact is via @explosion org (spaCy 27K+ stars).
+              Agent must not downgrade leadership based on personal star count alone.
+- nayafia   : no bio, primarily a writer/researcher. Skill assessment should weight documentation
+              and community work, not code output.
+
+HOW TO USE FOR EVALUATION
+--------------------------
+1. Run the agent pipeline on a profile (e.g. karpathy).
+2. Read the agent's output fields: top_skills, role_label, leadership_label, hr_summary.
+3. Compare against the corresponding entry in ground_truth.json.
+4. Score each of the 5 rubric dimensions from 1 to 5.
+5. Average scores across all 10 profiles per dimension to get an overall pipeline quality score.

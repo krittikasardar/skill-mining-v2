@@ -1,0 +1,199 @@
+{
+  "version": "1.0",
+  "created": "2026-05-17",
+  "purpose": "Ground truth for HR-oriented developer profile evaluation. Used to score agent outputs against manually derived expected answers.",
+
+  "hr_use_case": {
+    "description": "An HR professional wants to quickly assess a software developer's GitHub profile to answer three questions before an interview: (1) What are their core technical skills? (2) Do they create original work or mainly contribute to others' projects? (3) Do they show leadership signals such as maintaining widely-used projects or guiding communities?",
+    "expected_output_format": {
+      "top_skills": "List of 3-6 specific technical skills with evidence (language / framework / domain)",
+      "role_label": "One of: Creator (owns original high-impact repos), Contributor (mainly forks/PRs to others), Learner (small personal projects, no significant audience)",
+      "leadership_label": "One of: High (>5K stars or maintainer of widely-used project), Medium (500-5K stars or consistent maintainer), Low (<500 stars, no clear maintainer signals)",
+      "consistency_label": "One of: Consistent (active across 5+ years with no major gaps), Periodic (active in bursts), Inactive (peak activity was 4+ years ago with little recent work)",
+      "hr_summary": "2-3 sentence plain-English summary an HR professional can read directly"
+    }
+  },
+
+  "evaluation_rubric": {
+    "scale": "1-5 per dimension",
+    "dimensions": {
+      "factual_accuracy": "Do agent claims match visible GitHub evidence? (1=hallucinated, 5=fully grounded)",
+      "skill_coverage": "Are the key skills from this ground truth present in the agent output? (1=missing most, 5=all covered)",
+      "role_detection": "Is the role label correct and justified with collaboration signals? (1=wrong label, 5=correct with strong evidence)",
+      "leadership_detection": "Is the leadership level correct and supported by stars/fork/maintenance signals? (1=wrong, 5=correct with evidence)",
+      "evidence_grounding": "Does the agent cite specific repos or commits rather than making generic claims? (1=no citations, 5=every claim cited)"
+    }
+  },
+
+  "profiles": {
+    "karpathy": {
+      "top_skills": [
+        "Deep Learning and Neural Networks (Python, CUDA, C)",
+        "Large Language Models — nanoGPT, llama2.c, llm.c",
+        "Computer Vision and Reinforcement Learning",
+        "Low-level systems programming in C and CUDA",
+        "Educational technical writing and teaching"
+      ],
+      "role_label": "Creator",
+      "role_justification": "Owns 54 of 90 repos. High-impact original projects: nanoGPT (38K+ stars), micrograd, llm.c. Work is widely forked and cited.",
+      "leadership_label": "High",
+      "leadership_justification": "451,402 total stars. Pinned repos include nanoGPT and llm.c which are reference implementations used globally. Active issue tracker.",
+      "consistency_label": "Consistent",
+      "consistency_justification": "Active across 16 years (2011-2026). Trend is growing — more commits in recent years than early career. Peak in 2024.",
+      "hr_summary": "Andrej Karpathy is one of the most influential AI researchers and educators on GitHub, with 451K stars across original deep learning projects. He creates from-scratch implementations of foundational AI systems (GPT, LLaMA) in Python and C. Ideal for senior AI/ML research or education roles."
+    },
+
+    "sindresorhus": {
+      "top_skills": [
+        "JavaScript and TypeScript — hundreds of npm packages",
+        "Swift and macOS application development",
+        "CLI tooling and developer utilities",
+        "Open source project maintenance at scale",
+        "Rust (emerging, in recent repos)"
+      ],
+      "role_label": "Creator",
+      "role_justification": "Full-time open source developer. Owns 100 of 195 repos. Maintains hundreds of independent npm packages, each solving a focused problem.",
+      "leadership_label": "High",
+      "leadership_justification": "831,638 total stars. Maintains hundreds of actively-used packages. Prolific open source contributor known for high-quality, well-documented work.",
+      "consistency_label": "Consistent",
+      "consistency_justification": "Active across 15 years. Stable trend with peak in 2015. Still actively maintaining and creating packages.",
+      "hr_summary": "Sindre Sorhus is a full-time open source developer with an extraordinary portfolio of 100+ original JavaScript, TypeScript, and Swift packages totalling over 800K stars. He demonstrates exceptional consistency, documentation discipline, and community maintainership. Ideal for senior frontend, tooling, or open source platform roles."
+    },
+
+    "ryanmcdermott": {
+      "top_skills": [
+        "JavaScript and TypeScript — software engineering best practices",
+        "Clean Code and software design principles",
+        "C++ systems programming",
+        "Vim scripting and developer tooling"
+      ],
+      "role_label": "Creator",
+      "role_justification": "Owns 51 of 69 repos. Most famous for clean-code-javascript (94K stars) — a widely-cited original educational resource.",
+      "leadership_label": "High",
+      "leadership_justification": "98,141 total stars. clean-code-javascript is one of the most starred JavaScript repositories globally. Widely forked (12,469 forks).",
+      "consistency_label": "Periodic",
+      "consistency_justification": "Active across 14 years but trend is declining since peak in 2017. Describes himself as 'occasional open source developer'.",
+      "hr_summary": "Ryan McDermott is best known for clean-code-javascript, one of the most referenced JavaScript style guides on GitHub with 94K stars. His work focuses on software craftsmanship and best practices rather than application building. Good fit for senior engineering roles emphasising code quality and mentorship."
+    },
+
+    "tiangolo": {
+      "top_skills": [
+        "Python — FastAPI, Typer, SQLModel framework design",
+        "API development and REST/async architecture",
+        "TypeScript and JavaScript",
+        "Docker and containerisation",
+        "Rust (recent exploration)"
+      ],
+      "role_label": "Creator",
+      "role_justification": "Owns 38 of 89 repos. Creator of FastAPI (one of the fastest-growing Python frameworks), Typer, and SQLModel — all widely adopted originals.",
+      "leadership_label": "High",
+      "leadership_justification": "16K stars on personal repos; FastAPI under the tiangolo org has 80K+ stars. Maintainer of multiple production-grade frameworks used globally.",
+      "consistency_label": "Consistent",
+      "consistency_justification": "Active across 13 years. Declining trend on personal profile but continues active framework maintenance under org accounts.",
+      "hr_summary": "Sebastian Ramirez (tiangolo) is the creator of FastAPI, one of the most popular Python web frameworks. His work demonstrates deep expertise in Python API design, async programming, and developer experience. Ideal for senior Python backend or framework/platform engineering roles."
+    },
+
+    "chiphuyen": {
+      "top_skills": [
+        "Machine Learning and AI systems (Python, Jupyter Notebook)",
+        "ML engineering and production ML pipelines",
+        "C++ for performance-critical ML components",
+        "AI education and technical writing",
+        "Data Science (Scala, SQL, feature engineering)"
+      ],
+      "role_label": "Creator",
+      "role_justification": "Owns 14 of 48 repos. Original high-impact work: ML Interviews Book, HHVM, AI Engineering course materials. Widely cited resources.",
+      "leadership_label": "High",
+      "leadership_justification": "56,348 total stars. Educational resources used globally. Author of published AI engineering books. Strong community following.",
+      "consistency_label": "Consistent",
+      "consistency_justification": "Active across 10 years with stable trend. Consistent output of educational and technical content alongside research.",
+      "hr_summary": "Chip Huyen is an AI/ML engineer and educator with 56K stars across original machine learning educational resources and engineering tools. Her work spans practical ML systems, Python tooling, and C++ performance components. Strong fit for ML engineering, AI education, or developer relations roles."
+    },
+
+    "justmarkham": {
+      "top_skills": [
+        "Python for Data Science — Pandas, scikit-learn, NumPy",
+        "Machine Learning — supervised and unsupervised methods",
+        "R for statistical analysis",
+        "Data Science education and curriculum design",
+        "Jupyter Notebook-based teaching materials"
+      ],
+      "role_label": "Creator",
+      "role_justification": "Owns 25 of 51 repos. Founded Data School. Original course materials (DAT8, pandas Q&A, scikit-learn tutorials) are widely used educational resources.",
+      "leadership_label": "High",
+      "leadership_justification": "14,402 total stars. Teaching repos heavily forked (e.g. 1055 forks on one repo). Known data science educator with strong community presence.",
+      "consistency_label": "Periodic",
+      "consistency_justification": "Active across 13 years but declining since peak in 2015. Most high-starred repos are from the 2014-2016 teaching era.",
+      "hr_summary": "Kevin Markham (Data School founder) is a data science educator whose Python and pandas teaching repositories have accumulated 14K stars. His work demonstrates strong expertise in Python data science tooling and pedagogy. Best fit for data science education, developer advocacy, or senior data analyst roles."
+    },
+
+    "honnibal": {
+      "top_skills": [
+        "Natural Language Processing — spaCy library design",
+        "Python and C++ for high-performance NLP",
+        "Computational linguistics and parsing",
+        "Cython for Python-C++ interoperability",
+        "Open source library architecture"
+      ],
+      "role_label": "Contributor",
+      "role_justification": "Owns only 19 of 106 repos on personal profile. Core work (spaCy) lives under the @explosion organisation, not the personal account. Personal stars (451) significantly underrepresent actual impact.",
+      "leadership_label": "High",
+      "leadership_justification": "Co-founded @explosion and co-created spaCy (27K+ stars under org). Personal profile stars are misleading — his real leadership is through organisational repos.",
+      "consistency_label": "Consistent",
+      "consistency_justification": "Active across 11 years. Declining on personal account but ongoing through @explosion org. Peak 2018 reflects period of heavy spaCy development.",
+      "hr_summary": "Matthew Honnibal is the co-creator of spaCy, one of the most widely used industrial NLP libraries in Python/C++. His personal GitHub understates his impact since core work sits under @explosion. Strong fit for NLP research, Python library architecture, or senior engineering leadership roles.",
+      "data_note": "Personal star count (451) is misleading. Real impact must be assessed via @explosion org. Flag this as a data collection limitation."
+    },
+
+    "ines": {
+      "top_skills": [
+        "Python — spaCy, Prodigy, NLP tooling",
+        "JavaScript and CSS — front-end and interactive documentation",
+        "Machine Learning and NLP",
+        "Developer experience and documentation tooling",
+        "R for statistical work"
+      ],
+      "role_label": "Creator",
+      "role_justification": "Owns 14 of 30 repos. Co-founded @explosion, created spaCy and Prodigy. Original front-end tools (termynal.js) independently starred.",
+      "leadership_label": "High",
+      "leadership_justification": "3,551 personal stars plus significant organisational impact via @explosion. Prodigy is a paid commercial product derived from her work.",
+      "consistency_label": "Consistent",
+      "consistency_justification": "Active across 9 years with stable trend. Peak in 2019 aligns with heavy spaCy v2/v3 development.",
+      "hr_summary": "Ines Montani co-founded Explosion and co-created spaCy and Prodigy, combining Python NLP expertise with strong front-end and developer tooling skills. Her work spans ML tooling, interactive documentation, and JavaScript utilities. Ideal for senior full-stack ML, developer experience, or product engineering roles."
+    },
+
+    "hnarayanan": {
+      "top_skills": [
+        "Scientific Computing and numerical methods",
+        "Python, Jupyter Notebook — data analysis and research",
+        "Web development (HTML, JavaScript)",
+        "Shell scripting and CLI tools (Bash, Tcl)",
+        "Bioinformatics and computational biology"
+      ],
+      "role_label": "Creator",
+      "role_justification": "Owns 58 of 114 repos — majority ownership. Mix of research tools, web projects, and open source utilities reflecting a broad technical background.",
+      "leadership_label": "Medium",
+      "leadership_justification": "3,110 total stars. shpotify (2K stars) is the standout project. Broad portfolio but no single dominant high-impact project.",
+      "consistency_label": "Periodic",
+      "consistency_justification": "Active across 18 years (longest in our set) but clearly declining since peak in 2016. Likely shifted focus to non-public work.",
+      "hr_summary": "Harish Narayanan has an 18-year GitHub history spanning scientific computing, bioinformatics, and web development. His most recognised work is shpotify, a Bash CLI for Spotify. Best fit for data engineering, scientific software, or full-stack research engineering roles."
+    },
+
+    "nayafia": {
+      "top_skills": [
+        "Open source community and sustainability research",
+        "Technical writing and documentation",
+        "HTML and static site generation",
+        "Open source funding and governance models"
+      ],
+      "role_label": "Creator",
+      "role_justification": "Owns 8 of 31 repos. Best known for lemonade-stand (7.6K stars) — an original guide to open source funding. Work is research/writing-oriented rather than code-heavy.",
+      "leadership_label": "High",
+      "leadership_justification": "11,336 total stars, largely from lemonade-stand and related open source guides. Recognised thought leader in open source sustainability.",
+      "consistency_label": "Periodic",
+      "consistency_justification": "Active across 11 years but declining since peak in 2019. Most recent repos are low activity. Likely moved focus to writing and non-code work.",
+      "data_note": "No bio on profile. Work is primarily writing/research rather than software engineering. Skills assessment should weight documentation and community work, not code output.",
+      "hr_summary": "Nadia Eghbal is a researcher and writer focused on open source sustainability, best known for the lemonade-stand funding guide (11K stars). Her GitHub reflects thought leadership rather than engineering output. Best fit for developer relations, open source program management, or community strategy roles."
+    }
+  }
+}
