@@ -1,9 +1,17 @@
 import json
 import os
+from typing import Any, Dict, List, Optional, Tuple
+
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
-from .tools import get_github_profile, get_github_repos, get_github_languages
+
+from .tools import (
+    get_github_profile,
+    retrieve_leadership_evidence,
+    retrieve_role_evidence,
+    retrieve_skill_evidence,
+)
 
 load_dotenv()
 
@@ -14,165 +22,266 @@ llm = ChatGroq(
 )
 
 
-def skill_extractor_agent(state):
-    """Extracts technical skills with evidence + confidence"""
+def _strip_json_wrappers(text: str) -> str:
+    content = text.strip()
+    if "```" in content:
+        if "```json" in content:
+            start_idx = content.find("```json") + 7
+        else:
+            start_idx = content.find("```") + 3
+        end_idx = content.find("```", start_idx)
+        if end_idx != -1:
+            content = content[start_idx:end_idx].strip()
+        else:
+            content = content[start_idx:].strip()
 
-    username = state["username"]
-    
-    # Temporary: still using API
-    languages = get_github_languages(username)
-    repos = get_github_repos(username)
+    # Trim to the last closing bracket/brace
+    last_idx = max(content.rfind("}"), content.rfind("]"))
+    if last_idx != -1:
+        content = content[: last_idx + 1]
+    return content
 
-    # Convert to "pseudo-evidence" (important for future RAG alignment)
-    evidence_chunks = []
-    
-    for r in repos:
-        evidence_chunks.append({
-            "repo": r["name"],
-            "type": "repo_metadata",
-            "text": f"{r['name']} uses {r['language']}. Description: {r['description']}"
-        })
 
-    for lang, count in languages:
-        evidence_chunks.append({
-            "repo": "multiple",
-            "type": "language_summary",
-            "text": f"{lang} used in {count} repositories"
-        })
+def safe_json_parse(
+    text: str,
+    expected_type: type,
+    required_keys: Optional[List[str]] = None,
+) -> Tuple[Optional[Any], Optional[str]]:
+    try:
+        content = _strip_json_wrappers(text)
+        parsed = json.loads(content)
+    except Exception as exc:
+        return None, f"json_parse_error: {exc}"
 
-    context = "\n".join([f"- {c['text']}" for c in evidence_chunks])
+    if not isinstance(parsed, expected_type):
+        return None, f"json_type_error: expected {expected_type.__name__}"
 
-    messages = [
-        SystemMessage(content="""
+    if required_keys:
+        if isinstance(parsed, dict):
+            missing = [k for k in required_keys if k not in parsed]
+            if missing:
+                return None, f"json_missing_keys: {', '.join(missing)}"
+        if isinstance(parsed, list):
+            for idx, item in enumerate(parsed):
+                if not isinstance(item, dict):
+                    return None, f"json_item_type_error: index {idx}"
+                missing = [k for k in required_keys if k not in item]
+                if missing:
+                    return None, f"json_missing_keys: index {idx} -> {', '.join(missing)}"
+
+    return parsed, None
+
+
+def _ensure_state(state: Dict[str, Any]) -> Dict[str, Any]:
+    state.setdefault("retrieved_evidence", {})
+    state.setdefault("skills", [])
+    state.setdefault("roles", {})
+    state.setdefault("leadership", {})
+    state.setdefault("summary", "")
+    return state
+
+
+def _format_evidence(chunks: List[Dict[str, Any]], max_items: int = 25) -> str:
+    seen = set()
+    lines: List[str] = []
+    for chunk in chunks:
+        key = (chunk.get("source"), chunk.get("type"), chunk.get("content"))
+        if key in seen:
+            continue
+        seen.add(key)
+        lines.append(
+            f"- source={chunk.get('source')} type={chunk.get('type')} content={chunk.get('content')}"
+        )
+        if len(lines) >= max_items:
+            break
+    return "\n".join(lines)
+
+
+SKILL_SYSTEM_PROMPT = """
 You are a skill extraction expert.
-
-Extract technical skills from GitHub data.
-
-IMPORTANT:
-- Only include skills supported by evidence
-- Do NOT assign all skills the same confidence
-- Confidence should reflect:
-  - frequency of use
-  - consistency across repositories
-- Select only the most representative evidence (max 4 per skill)
-- Avoid repetition in evidence
-
-For each skill return:
+Return a JSON array of objects with:
 - name
+- category
 - confidence (0 to 1)
-- justification (must explain WHY confidence is high/low)
-- evidence (diverse, non-redundant snippets)
+- justification
+- evidence: array of {source, text}
 
-Return JSON ONLY.
-"""),
-        HumanMessage(content=f"""
-GitHub Evidence:
-{context}
+Rules:
+- Only infer skills supported by evidence.
+- Prioritize frameworks, libraries, and tools over generic terms.
+- No duplicate or redundant evidence per skill.
+- Confidence must reflect evidence strength and consistency.
+- Return JSON only. No markdown. No extra text.
+""".strip()
 
-Extract the developer's skills.
-""")
+
+ROLE_SYSTEM_PROMPT = """
+You are a developer role analyst.
+Classify the developer as one primary role: creator, contributor, maintainer, or learner.
+Return JSON with:
+- primary_role
+- confidence (0 to 1)
+- supporting_signals: array of {type, evidence, impact}
+- justification
+
+Rules:
+- Use only the provided evidence.
+- Do not make assumptions beyond evidence.
+- Return JSON only. No markdown. No extra text.
+""".strip()
+
+
+LEADERSHIP_SYSTEM_PROMPT = """
+You are a leadership and ownership analyst.
+Evaluate leadership signals using evidence only.
+Return JSON with:
+- leadership_level (high|medium|low|none)
+- confidence (0 to 1)
+- signals: array of {type, evidence, impact}
+- justification
+
+Rules:
+- Do not inflate leadership claims.
+- Use only the provided evidence.
+- Return JSON only. No markdown. No extra text.
+""".strip()
+
+
+SUMMARY_SYSTEM_PROMPT = """
+You are a professional technical writer.
+Write a 4-6 sentence developer profile summary.
+Rules:
+- Ground every claim in the provided evidence.
+- Avoid marketing exaggeration or unsupported claims.
+- Tone: professional, concise, technical.
+""".strip()
+
+
+def skill_extractor_agent(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Extracts technical skills with evidence + confidence."""
+    state = _ensure_state(state)
+    username = state["username"]
+
+    evidence_chunks = retrieve_skill_evidence(username)
+    state["retrieved_evidence"]["skills"] = evidence_chunks
+
+    context = _format_evidence(evidence_chunks)
+    messages = [
+        SystemMessage(content=SKILL_SYSTEM_PROMPT),
+        HumanMessage(content=f"Username: {username}\nEvidence:\n{context}\n"),
     ]
 
     response = llm.invoke(messages)
+    parsed, error = safe_json_parse(
+        response.content,
+        expected_type=list,
+        required_keys=["name", "category", "confidence", "justification", "evidence"],
+    )
 
-    try:
-        # Clean the response content - extract JSON from markdown code blocks
-        content = response.content.strip()
-        
-        # Look for JSON code block
-        if '```json' in content:
-            # Find the start of the JSON block
-            start_idx = content.find('```json') + 7
-            # Find the end of the JSON block
-            end_idx = content.find('```', start_idx)
-            if end_idx != -1:
-                content = content[start_idx:end_idx].strip()
-            else:
-                # If no closing ```, take everything after ```json
-                content = content[start_idx:].strip()
-        elif content.startswith('```'):
-            # Handle case where it's just ``` without json
-            start_idx = content.find('```') + 3
-            end_idx = content.find('```', start_idx)
-            if end_idx != -1:
-                content = content[start_idx:end_idx].strip()
-            else:
-                content = content[start_idx:].strip()
-        
-        # Remove any trailing text after the JSON
-        # Find the last } or ] to get just the JSON
-        last_brace = max(content.rfind('}'), content.rfind(']'))
-        if last_brace != -1:
-            content = content[:last_brace + 1]
-        
-        state["skills"] = json.loads(content)
-    except Exception as e:
-        print(f"JSON parsing error: {e}")
-        state["skills"] = {"error": response.content}
+    if error:
+        state["retrieved_evidence"]["skills_error"] = {
+            "error": error,
+            "raw": response.content,
+        }
+        state["skills"] = []
+    else:
+        state["skills"] = parsed
 
-    print("Skill agent upgraded (structured + grounded)")
     return state
 
 
 # ── Agent 2: Role Analyzer ────────────────────────────────────────────
-def role_analyzer_agent(state):
-    """Looks at repos to determine if developer is creator or contributor"""
+def role_analyzer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Analyzes repos to determine developer role."""
+    state = _ensure_state(state)
     username = state["username"]
-    repos = get_github_repos(username)
-    
-    original = [r for r in repos if not r["is_fork"]]
-    forked = [r for r in repos if r["is_fork"]]
-    
-    repo_summary = f"""
-    Total repos: {len(repos)}
-    Original repos (created by them): {len(original)}
-    Forked repos (contributed to others): {len(forked)}
-    
-    Their original repos:
-    """ + "\n".join([f"- {r['name']}: {r['stars']} stars, {r['forks']} forks" for r in original[:5]])
-    
+
+    evidence_chunks = retrieve_role_evidence(username)
+    state["retrieved_evidence"]["roles"] = evidence_chunks
+
+    context = _format_evidence(evidence_chunks)
     messages = [
-        SystemMessage(content="""You are a developer role analyst.
-        Based on GitHub repository data, determine what role this developer
-        typically takes: creator, contributor, maintainer, or learner.
-        Give a short 2-3 sentence analysis."""),
-        
-        HumanMessage(content=repo_summary)
+        SystemMessage(content=ROLE_SYSTEM_PROMPT),
+        HumanMessage(content=f"Username: {username}\nEvidence:\n{context}\n"),
     ]
-    
+
     response = llm.invoke(messages)
-    state["roles"] = response.content
-    print("Agent 2 done: Roles analyzed")
+    parsed, error = safe_json_parse(
+        response.content,
+        expected_type=dict,
+        required_keys=["primary_role", "confidence", "supporting_signals", "justification"],
+    )
+
+    if error:
+        state["retrieved_evidence"]["roles_error"] = {
+            "error": error,
+            "raw": response.content,
+        }
+        state["roles"] = {}
+    else:
+        state["roles"] = parsed
+
+    return state
+
+
+def leadership_detector_agent(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Detects leadership and ownership signals."""
+    state = _ensure_state(state)
+    username = state["username"]
+
+    evidence_chunks = retrieve_leadership_evidence(username)
+    state["retrieved_evidence"]["leadership"] = evidence_chunks
+
+    context = _format_evidence(evidence_chunks)
+    messages = [
+        SystemMessage(content=LEADERSHIP_SYSTEM_PROMPT),
+        HumanMessage(content=f"Username: {username}\nEvidence:\n{context}\n"),
+    ]
+
+    response = llm.invoke(messages)
+    parsed, error = safe_json_parse(
+        response.content,
+        expected_type=dict,
+        required_keys=["leadership_level", "confidence", "signals", "justification"],
+    )
+
+    if error:
+        state["retrieved_evidence"]["leadership_error"] = {
+            "error": error,
+            "raw": response.content,
+        }
+        state["leadership"] = {}
+    else:
+        state["leadership"] = parsed
+
     return state
 
 
 # ── Agent 3: Profile Summarizer ───────────────────────────────────────
-def summarizer_agent(state):
-    """Takes skills + roles and writes the final developer profile"""
+def summarizer_agent(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Synthesizes skills, roles, and leadership into a profile summary."""
+    state = _ensure_state(state)
     profile = get_github_profile(state["username"])
-    
+
     messages = [
-        SystemMessage(content="""You are a professional technical writer.
-        Write a short, clear developer profile summary (3-4 sentences).
-        Make it sound professional, like something on a portfolio site."""),
-        
-        HumanMessage(content=f"""
-        Developer name: {profile['name']}
-        Bio: {profile['bio']}
-        Public repos: {profile['public_repos']}
-        Followers: {profile['followers']}
-        
-        Skills analysis:
-        {state['skills']}
-        
-        Role analysis:
-        {state['roles']}
-        
-        Write a professional summary of this developer.
-        """)
+        SystemMessage(content=SUMMARY_SYSTEM_PROMPT),
+        HumanMessage(
+            content=(
+                "Developer profile data:\n"
+                f"name={profile.get('name')}\n"
+                f"bio={profile.get('bio')}\n"
+                f"public_repos={profile.get('public_repos')}\n"
+                f"followers={profile.get('followers')}\n\n"
+                "Skills output:\n"
+                f"{state.get('skills')}\n\n"
+                "Role output:\n"
+                f"{state.get('roles')}\n\n"
+                "Leadership output:\n"
+                f"{state.get('leadership')}\n"
+            )
+        ),
     ]
-    
+
     response = llm.invoke(messages)
-    state["summary"] = response.content
-    print("Agent 3 done: Summary written")
+    state["summary"] = response.content.strip()
     return state
