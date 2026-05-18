@@ -2,6 +2,15 @@
 
 A Python pipeline for collecting public GitHub profile and repository evidence, enriching it with activity/collaboration signals, and converting it into cleaned, chunked JSON for downstream retrieval, analysis, or reporting.
 
+## Branch Usage
+
+This repository currently uses separate branches for different parts of the project:
+
+- `main`: used for GitHub data collection.
+- `sushma/end-to-end-implementation`: used to run the system locally and test the end-to-end implementation.
+
+These branches are intentionally kept isolated to make the data collection workflow and local system implementation easier to understand and maintain.
+
 The current pipeline focuses on **evidence collection and preprocessing**:
 
 1. collect profile-level GitHub data,
